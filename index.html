@@ -805,11 +805,8 @@
                     console.log('🟡 CLOSE! cents:', cents);
                     setFeedbackStatus('close');
                     setFeedbackMessage('Vicino! / Close!');
-                } else {
-                    console.log('❌ WRONG! Note:', detected.note, 'vs', target.note);
-                    setFeedbackStatus('wrong');
-                    setFeedbackMessage('');
                 }
+                // REMOVED ELSE BLOCK: No negative feedback for wrong notes
             }, [autoMode, generateNewNote, stopTimer]);
 
             const handleVolumeUpdate = useCallback(vol => setVolume(vol), []);
