@@ -356,8 +356,9 @@
                 const volume = features.rms || 0;
                 if (onVolumeUpdate) onVolumeUpdate(volume);
 
-                // THRESHOLD BASSO per chitarra debole
-                if (volume < 0.001) return;
+                // THRESHOLD NORMALIZZATO (era 0.001)
+                // Impostalo a 0.02 o 0.03 per evitare rumori di fondo
+                if (volume < 0.02) return;
 
                 const inputChroma = features.chroma;
 
@@ -377,8 +378,9 @@
                     }
                 }
 
-                // 3. Confidence check (0.2)
-                if (maxChroma > 0.2) {
+                // 3. Confidence check PIÙ ALTA (era 0.2)
+                // Impostalo a 0.6 o 0.65 per essere sicuri che sia una nota pulita
+                if (maxChroma > 0.6) {
                     // Calcola frequenza (assumendo ottava 3 per chitarra range medio)
                     // C3 = 48 (130.81 Hz)
                     const baseMidi = 48 + dominantNote;
@@ -703,6 +705,7 @@
             const [isActive, setIsActive] = useState(false);
             const [currentNote, setCurrentNote] = useState(null);
             const currentNoteRef = useRef(null); // Fix stale closure bug
+            const isProcessingRef = useRef(false); // Lock per debounce
             const [noteHistory, setNoteHistory] = useState([]);
             const [historyIndex, setHistoryIndex] = useState(-1);
             const [micPermission, setMicPermission] = useState('prompt');
@@ -726,6 +729,7 @@
                 currentNoteRef.current = newNote; // Keep ref in sync
                 setNoteHistory(prev => [...prev, newNote]);
                 setHistoryIndex(prev => prev + 1);
+                isProcessingRef.current = false; // Unlock detection
 
                 audioEngine.resumeAudioContext().then(() => {
                     audioEngine.playNote(newNote.frequency, instrument);
@@ -759,6 +763,8 @@
             }, []);
 
             const handlePitchDetected = useCallback((frequency) => {
+                if (isProcessingRef.current) return; // Ignore if already processing success
+
                 const target = currentNoteRef.current; // Use ref instead of state
                 console.log('📊 handlePitchDetected called - Target:', target ? `${target.note}${target.octave}` : 'NULL');
                 if (!target) {
@@ -788,6 +794,7 @@
 
                 if (isCorrectNote && cents <= 25) {
                     console.log('✅ CORRECT! Setting feedback to correct');
+                    isProcessingRef.current = true; // Lock immediately
                     setFeedbackStatus('correct');
                     setFeedbackMessage('Corretto! / Correct!');
                     stopTimer();
