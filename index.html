@@ -358,7 +358,7 @@
 
                 // THRESHOLD NORMALIZZATO (era 0.001)
                 // Impostalo a 0.02 o 0.03 per evitare rumori di fondo
-                if (volume < 0.02) return;
+                if (volume < 0.03) return;
 
                 const inputChroma = features.chroma;
 
@@ -475,19 +475,26 @@
             );
         });
 
-        const KeySelector = memo(({ selectedKey, onChange }) => {
+        const KeySelector = memo(({ selectedKeys, onToggle, isMultiMode = true }) => {
             const keys = musicTheory.NOTES_INTERNATIONAL;
             return (
                 <div className="space-y-2">
-                    <label className="block text-white font-semibold text-sm">Tonalità / Key</label>
+                    <label className="block text-white font-semibold text-sm">
+                        Tonalità / Keys (Select multiple)
+                    </label>
                     <div className="grid grid-cols-6 gap-2">
-                        {keys.map(key => (
-                            <button key={key} onClick={() => onChange(key)}
-                                className={`px-3 py-2 rounded-lg font-semibold text-sm btn-hover
-                            ${selectedKey === key ? 'bg-white text-indigo-600 shadow-lg' : 'bg-white/20 text-white hover:bg-white/30'}`}>
-                                {key}
-                            </button>
-                        ))}
+                        {keys.map(key => {
+                            const isSelected = selectedKeys.includes(key);
+                            return (
+                                <button key={key} onClick={() => onToggle(key)}
+                                    className={`px-3 py-2 rounded-lg font-semibold text-sm btn-hover transition-all
+                                ${isSelected
+                                            ? 'bg-white text-indigo-600 shadow-lg scale-105'
+                                            : 'bg-white/20 text-white hover:bg-white/30'}`}>
+                                    {key}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             );
@@ -697,7 +704,7 @@
 
         // ========== MAIN APP ==========
         function App() {
-            const [key, setKey] = useState('C');
+            const [selectedKeys, setSelectedKeys] = useState(['C']); // Changed to Array
             const [scale, setScale] = useState('major');
             const [notation, setNotation] = useState('international');
             const [instrument, setInstrument] = useState('guitar');
@@ -719,7 +726,34 @@
             const timerStartRef = useRef(null);
             const timerIntervalRef = useRef(null);
 
-            const validNotes = useMemo(() => musicTheory.getValidNotes(key, scale, instrument), [key, scale, instrument]);
+            const validNotes = useMemo(() => {
+                // Combine valid notes from ALL selected keys
+                const allNotes = selectedKeys.flatMap(k => musicTheory.getValidNotes(k, scale, instrument));
+
+                // Deduplicate notes (same note+octave might appear in different keys)
+                const uniqueNotes = [];
+                const seen = new Set();
+                for (const n of allNotes) {
+                    const id = `${n.note}${n.octave}`;
+                    if (!seen.has(id)) {
+                        seen.add(id);
+                        uniqueNotes.push(n);
+                    }
+                }
+                return uniqueNotes;
+            }, [selectedKeys, scale, instrument]);
+
+            const toggleKey = useCallback((k) => {
+                setSelectedKeys(prev => {
+                    if (prev.includes(k)) {
+                        // Prevent deselecting the last key (must have at least one)
+                        if (prev.length === 1) return prev;
+                        return prev.filter(key => key !== k);
+                    } else {
+                        return [...prev, k];
+                    }
+                });
+            }, []);
 
             const generateNewNote = useCallback(() => {
                 const newNote = musicTheory.getRandomNote(validNotes, currentNote);
@@ -799,7 +833,8 @@
                     setFeedbackMessage('Corretto! / Correct!');
                     stopTimer();
                     if (autoMode) {
-                        setTimeout(() => generateNewNote(), 500);
+                        // Delay aumentato a 1.5s (1500ms) come richiesto
+                        setTimeout(() => generateNewNote(), 1500);
                     }
                 } else if (isCorrectNote && cents <= 50) {
                     console.log('🟡 CLOSE! cents:', cents);
@@ -889,7 +924,10 @@
                             <div className="lg:col-span-3 space-y-4">
                                 <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 space-y-4">
                                     <h2 className="text-xl font-bold text-white mb-4">Configurazione / Settings</h2>
-                                    <KeySelector selectedKey={key} onChange={setKey} />
+                                    <KeySelector
+                                        selectedKeys={selectedKeys}
+                                        onToggle={toggleKey}
+                                    />
                                     <ScaleSelector selectedScale={scale} onChange={setScale} />
                                     <NotationToggle notation={notation} onChange={setNotation} />
                                     <InstrumentSelector instrument={instrument} onChange={setInstrument} />
