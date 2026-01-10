@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="description"
+        content="Applicazione di training musicale per riconoscimento note - Chitarra e Pianoforte">
+    <meta name="theme-color" content="#4f46e5">
+    <title>Musical Training App</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
+
+    <!-- React and ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel Standalone for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/meyda/dist/web/meyda.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .mono-font {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Animations */
+        @keyframes fadeInScale {
+            from {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.1);
+            }
+        }
+
+        @keyframes bounce {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        @keyframes slideInUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes glow {
+
+            0%,
+            100% {
+                box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+            }
+
+            50% {
+                box-shadow: 0 0 20px rgba(16, 185, 129, 0.8);
+            }
+        }
+
+        .note-enter {
+            animation: fadeInScale 0.3s ease-out;
+        }
+
+        .feedback-correct {
+            animation: pulse 0.5s ease-in-out;
+        }
+
+        .feedback-bounce {
+            animation: bounce 0.5s ease-in-out;
+        }
+
+        .slide-in-up {
+            animation: slideInUp 0.4s ease-out;
+        }
+
+        .glow-effect {
+            animation: glow 1.5s ease-in-out infinite;
+        }
+
+        .color-transition {
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+        }
+
+        .status-idle {
+            border-color: #6b7280;
+            background-color: rgba(107, 114, 128, 0.1);
+        }
+
+        .status-correct {
+            border-color: #10b981;
+            background-color: rgba(16, 185, 129, 0.1);
+        }
+
+        .status-close {
+            border-color: #f59e0b;
+            background-color: rgba(245, 158, 11, 0.1);
+        }
+
+        .status-wrong {
+            border-color: #ef4444;
+            background-color: rgba(239, 68, 68, 0.1);
+        }
+
+        .btn-hover {
+            transition: all 0.15s ease;
+        }
+
+        .btn-hover:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .volume-bar,
+        .pitch-indicator {
+            transition: all 0.1s linear;
+        }
+
+        .disabled-opacity {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // ========== MUSICAL THEORY MODULE ==========
+        const musicTheory = (() => {
+            const NOTES_INTERNATIONAL = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+            const NOTES_LATIN = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
+            const SCALE_INTERVALS = {
+                major: [0, 2, 4, 5, 7, 9, 11],
+                minor: [0, 2, 3, 5, 7, 8, 10]
+            };
+
+            function calculateFrequency(note, octave) {
+                const noteIndex = NOTES_INTERNATIONAL.indexOf(note);
+                if (noteIndex === -1) return null;
+                const midiNote = (octave + 1) * 12 + noteIndex;
+                return 440 * Math.pow(2, (midiNote - 69) / 12);
+            }
+
+            function getNoteFromFrequency(frequency) {
+                if (!frequency || frequency < 20) return null;
+                const midiNote = 69 + 12 * Math.log2(frequency / 440);
+                const roundedMidi = Math.round(midiNote);
+                const cents = Math.round((midiNote - roundedMidi) * 100);
+                const octave = Math.floor(roundedMidi / 12) - 1;
+                const noteIndex = roundedMidi % 12;
+                const note = NOTES_INTERNATIONAL[noteIndex];
+                return { note, octave, cents, frequency: calculateFrequency(note, octave) };
+            }
+
+            function generateScale(key, scaleType = 'major') {
+                const keyIndex = NOTES_INTERNATIONAL.indexOf(key);
+                if (keyIndex === -1) return [];
+                const intervals = SCALE_INTERVALS[scaleType] || SCALE_INTERVALS.major;
+                return intervals.map(interval => {
+                    const noteIndex = (keyIndex + interval) % 12;
+                    return NOTES_INTERNATIONAL[noteIndex];
+                });
+            }
+
+            function getValidNotes(key, scale, instrument = 'guitar') {
+                const scaleNotes = generateScale(key, scale);
+                const validNotes = [];
+                const ranges = {
+                    guitar: { min: 'E2', minOct: 2, max: 'E5', maxOct: 5 },
+                    piano: { min: 'C2', minOct: 2, max: 'C6', maxOct: 6 }
+                };
+                const range = ranges[instrument];
+
+                for (let octave = range.minOct; octave <= range.maxOct; octave++) {
+                    scaleNotes.forEach(note => {
+                        const freq = calculateFrequency(note, octave);
+                        const minFreq = calculateFrequency(range.min[0], range.minOct);
+                        const maxFreq = calculateFrequency(range.max[0], range.maxOct);
+                        if (freq >= minFreq && freq <= maxFreq) {
+                            validNotes.push({ note, octave, frequency: freq });
+                        }
+                    });
+                }
+                return validNotes;
+            }
+
+            function getGuitarString(note, octave) {
+                const freq = calculateFrequency(note, octave);
+                const ranges = [
+                    { string: 6, min: calculateFrequency('E', 2), max: calculateFrequency('G#', 2) },
+                    { string: 5, min: calculateFrequency('A', 2), max: calculateFrequency('C#', 3) },
+                    { string: 4, min: calculateFrequency('D', 3), max: calculateFrequency('F#', 3) },
+                    { string: 3, min: calculateFrequency('G', 3), max: calculateFrequency('B', 3) },
+                    { string: 2, min: calculateFrequency('B', 3), max: calculateFrequency('D#', 4) },
+                    { string: 1, min: calculateFrequency('E', 4), max: calculateFrequency('E', 5) }
+                ];
+                for (const r of ranges) {
+                    if (freq >= r.min && freq <= r.max) return r.string;
+                }
+                return freq < calculateFrequency('E', 2) ? 6 : 1;
+            }
+
+            function getNoteName(note, notation = 'international') {
+                if (notation === 'latin') {
+                    const idx = NOTES_INTERNATIONAL.indexOf(note);
+                    return idx !== -1 ? NOTES_LATIN[idx] : note;
+                }
+                return note;
+            }
+
+            function getRandomNote(validNotes, previousNote = null) {
+                if (!validNotes || validNotes.length === 0) return null;
+                let filtered = validNotes;
+                if (previousNote && validNotes.length > 1) {
+                    filtered = validNotes.filter(n =>
+                        n.note !== previousNote.note || n.octave !== previousNote.octave
+                    );
+                }
+                return filtered[Math.floor(Math.random() * filtered.length)];
+            }
+
+            return {
+                NOTES_INTERNATIONAL, NOTES_LATIN, calculateFrequency, getNoteFromFrequency,
+                getValidNotes, getGuitarString, getNoteName, getRandomNote
+            };
+        })();
+
+        // ========== AUDIO ENGINE MODULE ==========
+        const audioEngine = (() => {
+            let audioContext = null;
+            let masterGain = null;
+
+            function initAudioContext() {
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    masterGain = audioContext.createGain();
+                    masterGain.gain.value = 0.3;
+                    masterGain.connect(audioContext.destination);
+                }
+                return audioContext;
+            }
+
+            function playNote(frequency, instrument = 'guitar', duration = 1.0) {
+                if (!frequency) return;
+                if (!audioContext) initAudioContext();
+
+                const now = audioContext.currentTime;
+                const osc = audioContext.createOscillator();
+                osc.type = instrument === 'guitar' ? 'triangle' : 'sine';
+                osc.frequency.value = frequency;
+
+                const env = audioContext.createGain();
+                env.gain.setValueAtTime(0, now);
+                env.gain.linearRampToValueAtTime(0.6, now + 0.05);
+                env.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+                osc.connect(env);
+                env.connect(masterGain);
+                osc.start(now);
+                osc.stop(now + duration);
+            }
+
+            async function resumeAudioContext() {
+                if (audioContext && audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
+            }
+
+            function cleanupAudioContext() {
+                if (audioContext) {
+                    audioContext.close();
+                    audioContext = null;
+                    masterGain = null;
+                }
+            }
+
+            return { initAudioContext, playNote, resumeAudioContext, cleanupAudioContext };
+        })();
+
+        // ========== PITCH DETECTOR MODULE (Meyda-based) ==========
+        const pitchDetector = (() => {
+            let audioContext, microphone, mediaStream, meydaAnalyzer;
+            let onPitchDetected, onVolumeUpdate;
+            let previousChroma = new Float32Array(12).fill(0);
+            const smoothingAlpha = 0.65;
+            const noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+            function analyzeAudio(features) {
+                if (!features || !features.chroma) return;
+
+                const volume = features.rms || 0;
+                if (onVolumeUpdate) onVolumeUpdate(volume);
+
+                // THRESHOLD BASSO per chitarra debole
+                if (volume < 0.001) return;
+
+                const inputChroma = features.chroma;
+
+                // 1. Temporal Smoothing
+                for (let i = 0; i < 12; i++) {
+                    previousChroma[i] = (previousChroma[i] * smoothingAlpha) + (inputChroma[i] * (1 - smoothingAlpha));
+                }
+
+                // 2. Trova la nota dominante
+                let maxChroma = -1;
+                let dominantNote = -1;
+
+                for (let i = 0; i < 12; i++) {
+                    if (previousChroma[i] > maxChroma) {
+                        maxChroma = previousChroma[i];
+                        dominantNote = i;
+                    }
+                }
+
+                // 3. Confidence check (0.2)
+                if (maxChroma > 0.2) {
+                    // Calcola frequenza (assumendo ottava 3 per chitarra range medio)
+                    // C3 = 48 (130.81 Hz)
+                    const baseMidi = 48 + dominantNote;
+                    const frequency = 440 * Math.pow(2, (baseMidi - 69) / 12);
+
+                    console.log('🎵 MEYDA:', noteStrings[dominantNote], frequency.toFixed(2), 'Hz, Conf:', maxChroma.toFixed(3));
+
+                    if (onPitchDetected) onPitchDetected(frequency);
+                }
+            }
+
+            async function startPitchDetection(pitchCallback, volumeCallback) {
+                try {
+                    mediaStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: false,
+                            noiseSuppression: false,
+                            autoGainControl: false
+                        }
+                    });
+
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+
+                    // LowShelf Filter: +12dB boost ai bassi
+                    const lowShelf = audioContext.createBiquadFilter();
+                    lowShelf.type = "lowshelf";
+                    lowShelf.frequency.value = 250;
+                    lowShelf.gain.value = 12;
+
+                    microphone = audioContext.createMediaStreamSource(mediaStream);
+                    microphone.connect(lowShelf);
+
+                    meydaAnalyzer = Meyda.createMeydaAnalyzer({
+                        audioContext: audioContext,
+                        source: lowShelf,
+                        bufferSize: 8192,
+                        featureExtractors: ["chroma", "rms"],
+                        callback: analyzeAudio
+                    });
+
+                    onPitchDetected = pitchCallback;
+                    onVolumeUpdate = volumeCallback;
+                    previousChroma.fill(0);
+
+                    meydaAnalyzer.start();
+                    console.log('✅ Meyda Detector STARTED');
+
+                    return { success: true, permission: 'granted' };
+                } catch (error) {
+                    console.error('❌ Mic error:', error);
+                    let permission = 'denied';
+                    if (error.name === 'NotFoundError') permission = 'no-device';
+                    return { success: false, permission, error: error.message };
+                }
+            }
+
+            function stopPitchDetection() {
+                if (meydaAnalyzer) meydaAnalyzer.stop();
+                if (microphone) microphone.disconnect();
+                if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+                if (audioContext) audioContext.close();
+                console.log('🛑 Detector stopped');
+            }
+
+            return { startPitchDetection, stopPitchDetection };
+        })();
+
+        // ========== REACT COMPONENTS ==========
+        const { useState, useEffect, useRef, useMemo, useCallback, memo } = React;
+
+        const NoteDisplay = memo(({ note, notation, feedbackStatus, instrument }) => {
+            if (!note) return null;
+            const noteName = musicTheory.getNoteName(note.note, notation);
+            const guitarString = instrument === 'guitar' ? musicTheory.getGuitarString(note.note, note.octave) : null;
+            const statusClass = `status-${feedbackStatus}`;
+
+            return (
+                <div className={`relative p-8 rounded-3xl border-4 color-transition note-enter ${statusClass} 
+            ${feedbackStatus === 'correct' ? 'feedback-correct glow-effect' : ''}`}>
+                    <div className="text-center">
+                        <div className="text-8xl md:text-9xl font-bold text-white mb-4">
+                            {noteName}
+                            <span className="text-5xl md:text-6xl ml-2 text-white/80">{note.octave}</span>
+                        </div>
+                        {guitarString && (
+                            <div className="text-2xl md:text-3xl text-white/90 font-medium">
+                                {notation === 'latin' ? 'Corda' : 'String'} {guitarString}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        });
+
+        const KeySelector = memo(({ selectedKey, onChange }) => {
+            const keys = musicTheory.NOTES_INTERNATIONAL;
+            return (
+                <div className="space-y-2">
+                    <label className="block text-white font-semibold text-sm">Tonalità / Key</label>
+                    <div className="grid grid-cols-6 gap-2">
+                        {keys.map(key => (
+                            <button key={key} onClick={() => onChange(key)}
+                                className={`px-3 py-2 rounded-lg font-semibold text-sm btn-hover
+                            ${selectedKey === key ? 'bg-white text-indigo-600 shadow-lg' : 'bg-white/20 text-white hover:bg-white/30'}`}>
+                                {key}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            );
+        });
+
+        const ScaleSelector = memo(({ selectedScale, onChange }) => (
+            <div className="space-y-2">
+                <label className="block text-white font-semibold text-sm">Scala / Scale</label>
+                <div className="flex gap-2">
+                    {['major', 'minor'].map(scale => (
+                        <button key={scale} onClick={() => onChange(scale)}
+                            className={`flex-1 px-4 py-3 rounded-lg font-semibold btn-hover
+                        ${selectedScale === scale ? 'bg-white text-indigo-600 shadow-lg' : 'bg-white/20 text-white hover:bg-white/30'}`}>
+                            {scale === 'major' ? 'Maggiore / Major' : 'Minore / Minor'}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        ));
+
+        const NotationToggle = memo(({ notation, onChange }) => (
+            <div className="space-y-2">
+                <label className="block text-white font-semibold text-sm">Notazione / Notation</label>
+                <div className="flex gap-2">
+                    <button onClick={() => onChange('international')}
+                        className={`flex-1 px-4 py-3 rounded-lg font-semibold btn-hover
+                    ${notation === 'international' ? 'bg-white text-indigo-600 shadow-lg' : 'bg-white/20 text-white hover:bg-white/30'}`}>
+                        C D E F G A B
+                    </button>
+                    <button onClick={() => onChange('latin')}
+                        className={`flex-1 px-4 py-3 rounded-lg font-semibold btn-hover
+                    ${notation === 'latin' ? 'bg-white text-indigo-600 shadow-lg' : 'bg-white/20 text-white hover:bg-white/30'}`}>
+                        Do Re Mi Fa Sol La Si
+                    </button>
+                </div>
+            </div>
+        ));
+
+        const InstrumentSelector = memo(({ instrument, onChange }) => (
+            <div className="space-y-2">
+                <label className="block text-white font-semibold text-sm">Strumento / Instrument</label>
+                <div className="flex gap-2">
+                    {[{ id: 'guitar', label: '🎸 Chitarra / Guitar' }, { id: 'piano', label: '🎹 Pianoforte / Piano' }].map(inst => (
+                        <button key={inst.id} onClick={() => onChange(inst.id)}
+                            className={`flex-1 px-4 py-3 rounded-lg font-semibold btn-hover
+                        ${instrument === inst.id ? 'bg-white text-indigo-600 shadow-lg' : 'bg-white/20 text-white hover:bg-white/30'}`}>
+                            {inst.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        ));
+
+        const ModeToggle = memo(({ autoMode, onChange }) => (
+            <div className="space-y-2">
+                <label className="block text-white font-semibold text-sm">Modalità / Mode</label>
+                <div className="flex gap-2">
+                    <button onClick={() => onChange(true)}
+                        className={`flex-1 px-4 py-3 rounded-lg font-semibold btn-hover
+                    ${autoMode ? 'bg-white text-indigo-600 shadow-lg' : 'bg-white/20 text-white hover:bg-white/30'}`}>
+                        ⚡ Automatica / Auto
+                    </button>
+                    <button onClick={() => onChange(false)}
+                        className={`flex-1 px-4 py-3 rounded-lg font-semibold btn-hover
+                    ${!autoMode ? 'bg-white text-indigo-600 shadow-lg' : 'bg-white/20 text-white hover:bg-white/30'}`}>
+                        ✋ Manuale / Manual
+                    </button>
+                </div>
+            </div>
+        ));
+
+        const VolumeIndicator = memo(({ volume }) => {
+            const percentage = Math.min(100, volume * 500);
+            return (
+                <div className="space-y-2">
+                    <label className="block text-white font-semibold text-sm">Volume Microfono / Mic Level</label>
+                    <div className="bg-white/10 rounded-lg p-3">
+                        <div className="h-3 bg-white/20 rounded-full overflow-hidden">
+                            <div className="volume-bar h-full rounded-full" style={{
+                                width: `${percentage}%`,
+                                backgroundColor: percentage > 70 ? '#10b981' : percentage > 30 ? '#f59e0b' : '#ef4444'
+                            }} />
+                        </div>
+                    </div>
+                </div>
+            );
+        });
+
+        const PitchIndicator = memo(({ detectedNote, targetNote }) => {
+            if (!detectedNote || !targetNote) {
+                return (
+                    <div className="bg-white/10 rounded-lg p-6">
+                        <div className="text-center text-white/60">Suona una nota / Play a note</div>
+                    </div>
+                );
+            }
+
+            const cents = detectedNote.cents || 0;
+            const percentage = Math.max(0, Math.min(100, 50 + cents));
+            const color = Math.abs(cents) <= 25 ? '#10b981' : Math.abs(cents) <= 50 ? '#f59e0b' : '#ef4444';
+
+            return (
+                <div className="space-y-2">
+                    <label className="block text-white font-semibold text-sm">Precisione / Accuracy</label>
+                    <div className="bg-white/10 rounded-lg p-4">
+                        <div className="relative h-4 bg-white/20 rounded-full overflow-hidden">
+                            <div className="pitch-indicator absolute h-full w-1 shadow-lg"
+                                style={{ left: `${percentage}%`, backgroundColor: color, transform: 'translateX(-50%)' }} />
+                        </div>
+                        <div className="mt-2 text-center text-white/90 font-mono text-sm">
+                            {cents > 0 ? '+' : ''}{cents} cents
+                        </div>
+                    </div>
+                </div>
+            );
+        });
+
+        const Timer = memo(({ time }) => {
+            const formatTime = (ms) => {
+                const totalSeconds = Math.floor(ms / 1000);
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                const deciseconds = Math.floor((ms % 1000) / 100);
+                return minutes > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}.${deciseconds}` : `${seconds}.${deciseconds}`;
+            };
+
+            return (
+                <div className="bg-white/10 rounded-lg px-6 py-3 inline-block">
+                    <div className="text-center">
+                        <div className="text-sm text-white/70 mb-1">Tempo / Time</div>
+                        <div className="text-3xl font-bold text-white mono-font">{formatTime(time)}</div>
+                    </div>
+                </div>
+            );
+        });
+
+        const FeedbackDisplay = memo(({ status, message }) => {
+            if (status === 'idle') return null;
+            const config = {
+                correct: { color: '#10b981', emoji: '✓', text: message || 'Corretto! / Correct!' },
+                close: { color: '#f59e0b', emoji: '~', text: message || 'Vicino! / Close!' },
+                wrong: { color: '#ef4444', emoji: '✗', text: message || 'Riprova / Try again' }
+            };
+            const c = config[status] || config.wrong;
+
+            return (
+                <div className={`bg-white/90 rounded-xl p-4 shadow-xl ${status === 'correct' ? 'feedback-bounce' : 'slide-in-up'}`}>
+                    <div className="flex items-center justify-center gap-3">
+                        <span className="text-3xl">{c.emoji}</span>
+                        <span className="text-xl font-bold" style={{ color: c.color }}>{c.text}</span>
+                    </div>
+                </div>
+            );
+        });
+
+        const NavigationButtons = memo(({ onPrevious, onNext, canGoPrevious, canGoNext, autoMode, currentIndex, totalNotes }) => (
+            <div className="space-y-3">
+                <div className="flex gap-3">
+                    <button onClick={onPrevious} disabled={!canGoPrevious}
+                        className={`flex-1 px-6 py-3 rounded-lg font-semibold btn-hover flex items-center justify-center gap-2
+                    ${!canGoPrevious ? 'bg-white/10 text-white/40 disabled-opacity' : 'bg-white/20 text-white hover:bg-white/30'}`}>
+                        <span>◀</span><span>Precedente / Previous</span>
+                    </button>
+                    <button onClick={onNext} disabled={!canGoNext || autoMode}
+                        className={`flex-1 px-6 py-3 rounded-lg font-semibold btn-hover flex items-center justify-center gap-2
+                    ${!canGoNext || autoMode ? 'bg-white/10 text-white/40 disabled-opacity' : 'bg-white/20 text-white hover:bg-white/30'}`}>
+                        <span>Successiva / Next</span><span>▶</span>
+                    </button>
+                </div>
+                <div className="text-center text-white/80 text-sm">Nota {currentIndex + 1} di {totalNotes}</div>
+            </div>
+        ));
+
+        const MicrophoneStatus = memo(({ permission, onRequestPermission }) => {
+            const config = {
+                granted: { color: '#10b981', icon: '🎤', text: 'Microfono Attivo / Microphone Active', button: false },
+                denied: { color: '#ef4444', icon: '🚫', text: 'Permesso Negato / Permission Denied', button: true, buttonText: 'Riprova / Retry' },
+                prompt: { color: '#f59e0b', icon: '⚠️', text: 'Permesso Richiesto / Permission Required', button: true, buttonText: 'Richiedi Permesso / Request Permission' }
+            };
+            const c = config[permission] || config.prompt;
+
+            return (
+                <div className="bg-white/10 rounded-lg p-4">
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-2xl">{c.icon}</span>
+                            <span className="text-white font-medium text-sm">{c.text}</span>
+                        </div>
+                        {c.button && (
+                            <button onClick={onRequestPermission}
+                                className="px-4 py-2 bg-white text-indigo-600 rounded-lg font-semibold text-sm btn-hover">
+                                {c.buttonText}
+                            </button>
+                        )}
+                    </div>
+                </div>
+            );
+        });
+
+        const SessionControls = memo(({ isActive, onStart, onStop }) => (
+            <button onClick={isActive ? onStop : onStart}
+                className={`w-full px-8 py-4 rounded-xl font-bold text-lg btn-hover shadow-xl
+            ${isActive ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-green-500 hover:bg-green-600 text-white'}`}>
+                {isActive ? '⏹ Stop Sessione / Stop Session' : '▶ Inizia Sessione / Start Session'}
+            </button>
+        ));
+
+        // ========== MAIN APP ==========
+        function App() {
+            const [key, setKey] = useState('C');
+            const [scale, setScale] = useState('major');
+            const [notation, setNotation] = useState('international');
+            const [instrument, setInstrument] = useState('guitar');
+            const [autoMode, setAutoMode] = useState(true);
+            const [isActive, setIsActive] = useState(false);
+            const [currentNote, setCurrentNote] = useState(null);
+            const currentNoteRef = useRef(null); // Fix stale closure bug
+            const [noteHistory, setNoteHistory] = useState([]);
+            const [historyIndex, setHistoryIndex] = useState(-1);
+            const [micPermission, setMicPermission] = useState('prompt');
+            const [detectedPitch, setDetectedPitch] = useState(null);
+            const [detectedNote, setDetectedNote] = useState(null);
+            const [feedbackStatus, setFeedbackStatus] = useState('idle');
+            const [feedbackMessage, setFeedbackMessage] = useState('');
+            const [volume, setVolume] = useState(0);
+            const [timerValue, setTimerValue] = useState(0);
+            const [isTimerRunning, setIsTimerRunning] = useState(false);
+            const timerStartRef = useRef(null);
+            const timerIntervalRef = useRef(null);
+
+            const validNotes = useMemo(() => musicTheory.getValidNotes(key, scale, instrument), [key, scale, instrument]);
+
+            const generateNewNote = useCallback(() => {
+                const newNote = musicTheory.getRandomNote(validNotes, currentNote);
+                if (!newNote) return;
+
+                setCurrentNote(newNote);
+                currentNoteRef.current = newNote; // Keep ref in sync
+                setNoteHistory(prev => [...prev, newNote]);
+                setHistoryIndex(prev => prev + 1);
+
+                audioEngine.resumeAudioContext().then(() => {
+                    audioEngine.playNote(newNote.frequency, instrument);
+                });
+
+                setFeedbackStatus('idle');
+                setFeedbackMessage('');
+                setIsTimerRunning(true);
+                timerStartRef.current = Date.now();
+            }, [validNotes, currentNote, instrument]);
+
+            useEffect(() => {
+                if (isTimerRunning) {
+                    timerIntervalRef.current = setInterval(() => {
+                        if (timerStartRef.current) {
+                            setTimerValue(Date.now() - timerStartRef.current);
+                        }
+                    }, 100);
+                } else {
+                    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+                }
+                return () => {
+                    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+                };
+            }, [isTimerRunning]);
+
+            const stopTimer = useCallback(() => setIsTimerRunning(false), []);
+            const resetTimer = useCallback(() => {
+                setTimerValue(0);
+                timerStartRef.current = null;
+            }, []);
+
+            const handlePitchDetected = useCallback((frequency) => {
+                const target = currentNoteRef.current; // Use ref instead of state
+                console.log('📊 handlePitchDetected called - Target:', target ? `${target.note}${target.octave}` : 'NULL');
+                if (!target) {
+                    console.warn('⚠️ No target note set!');
+                    return;
+                }
+
+                setDetectedPitch(frequency);
+                const detected = musicTheory.getNoteFromFrequency(frequency);
+                setDetectedNote(detected);
+
+                if (!detected) {
+                    console.warn('⚠️ Could not detect note from frequency:', frequency);
+                    return;
+                }
+
+                const isCorrectNote = detected.note === target.note;
+                const cents = Math.abs(detected.cents);
+
+                console.log('🎯 Comparison:', {
+                    detected: `${detected.note}${detected.octave}`,
+                    target: `${target.note}${target.octave}`,
+                    isCorrectNote,
+                    cents,
+                    frequency: frequency.toFixed(2)
+                });
+
+                if (isCorrectNote && cents <= 25) {
+                    console.log('✅ CORRECT! Setting feedback to correct');
+                    setFeedbackStatus('correct');
+                    setFeedbackMessage('Corretto! / Correct!');
+                    stopTimer();
+                    if (autoMode) {
+                        setTimeout(() => generateNewNote(), 500);
+                    }
+                } else if (isCorrectNote && cents <= 50) {
+                    console.log('🟡 CLOSE! cents:', cents);
+                    setFeedbackStatus('close');
+                    setFeedbackMessage('Vicino! / Close!');
+                } else {
+                    console.log('❌ WRONG! Note:', detected.note, 'vs', target.note);
+                    setFeedbackStatus('wrong');
+                    setFeedbackMessage('');
+                }
+            }, [autoMode, generateNewNote, stopTimer]);
+
+            const handleVolumeUpdate = useCallback(vol => setVolume(vol), []);
+
+            const startSession = useCallback(async () => {
+                audioEngine.initAudioContext();
+                const result = await pitchDetector.startPitchDetection(handlePitchDetected, handleVolumeUpdate);
+                setMicPermission(result.permission);
+                if (result.success) {
+                    setIsActive(true);
+                    generateNewNote();
+                }
+            }, [handlePitchDetected, handleVolumeUpdate, generateNewNote]);
+
+            const stopSession = useCallback(() => {
+                pitchDetector.stopPitchDetection();
+                setIsActive(false);
+                setCurrentNote(null);
+                currentNoteRef.current = null; // Clear ref too
+                setNoteHistory([]);
+                setHistoryIndex(-1);
+                setFeedbackStatus('idle');
+                setDetectedPitch(null);
+                setDetectedNote(null);
+                stopTimer();
+                resetTimer();
+            }, [stopTimer, resetTimer]);
+
+            const goToPreviousNote = useCallback(() => {
+                if (historyIndex <= 0) return;
+                const newIndex = historyIndex - 1;
+                const note = noteHistory[newIndex];
+                setHistoryIndex(newIndex);
+                setCurrentNote(note);
+                currentNoteRef.current = note; // Keep ref in sync
+                setFeedbackStatus('idle');
+                stopTimer();
+                resetTimer();
+                audioEngine.playNote(note.frequency, instrument);
+            }, [historyIndex, noteHistory, instrument, stopTimer, resetTimer]);
+
+            const goToNextNote = useCallback(() => {
+                if (autoMode) return;
+                if (historyIndex < noteHistory.length - 1) {
+                    const newIndex = historyIndex + 1;
+                    const note = noteHistory[newIndex];
+                    setHistoryIndex(newIndex);
+                    setCurrentNote(note);
+                    currentNoteRef.current = note; // Keep ref in sync
+                    setFeedbackStatus('idle');
+                    stopTimer();
+                    resetTimer();
+                    audioEngine.playNote(note.frequency, instrument);
+                } else {
+                    generateNewNote();
+                }
+            }, [autoMode, historyIndex, noteHistory, instrument, generateNewNote, stopTimer, resetTimer]);
+
+            const requestMicPermission = useCallback(async () => {
+                const result = await pitchDetector.startPitchDetection(handlePitchDetected, handleVolumeUpdate);
+                setMicPermission(result.permission);
+            }, [handlePitchDetected, handleVolumeUpdate]);
+
+            useEffect(() => {
+                return () => {
+                    pitchDetector.stopPitchDetection();
+                    audioEngine.cleanupAudioContext();
+                };
+            }, []);
+
+            return (
+                <div className="min-h-screen p-4 md:p-8">
+                    <div className="max-w-7xl mx-auto">
+                        <div className="text-center mb-8">
+                            <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">🎵 Musical Training App</h1>
+                            <p className="text-white/80 text-lg">Allenamento Riconoscimento Note / Note Recognition Training</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                            <div className="lg:col-span-3 space-y-4">
+                                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 space-y-4">
+                                    <h2 className="text-xl font-bold text-white mb-4">Configurazione / Settings</h2>
+                                    <KeySelector selectedKey={key} onChange={setKey} />
+                                    <ScaleSelector selectedScale={scale} onChange={setScale} />
+                                    <NotationToggle notation={notation} onChange={setNotation} />
+                                    <InstrumentSelector instrument={instrument} onChange={setInstrument} />
+                                    <ModeToggle autoMode={autoMode} onChange={setAutoMode} />
+                                </div>
+                            </div>
+
+                            <div className="lg:col-span-6 space-y-6">
+                                <div className="flex justify-center"><Timer time={timerValue} /></div>
+
+                                <div className="flex justify-center">
+                                    {currentNote ? (
+                                        <NoteDisplay note={currentNote} notation={notation} feedbackStatus={feedbackStatus} instrument={instrument} />
+                                    ) : (
+                                        <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-12 text-center">
+                                            <p className="text-2xl text-white/60">Premi Start per iniziare<br />Press Start to begin</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex justify-center">
+                                    <FeedbackDisplay status={feedbackStatus} message={feedbackMessage} />
+                                </div>
+
+                                {isActive && (
+                                    <NavigationButtons onPrevious={goToPreviousNote} onNext={goToNextNote}
+                                        canGoPrevious={historyIndex > 0} canGoNext={!autoMode && historyIndex >= 0}
+                                        autoMode={autoMode} currentIndex={historyIndex} totalNotes={noteHistory.length} />
+                                )}
+
+                                <SessionControls isActive={isActive} onStart={startSession} onStop={stopSession} />
+                            </div>
+
+                            <div className="lg:col-span-3 space-y-4">
+                                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 space-y-4">
+                                    <h2 className="text-xl font-bold text-white mb-4">Status</h2>
+                                    <MicrophoneStatus permission={micPermission} onRequestPermission={requestMicPermission} />
+                                    {isActive && (
+                                        <>
+                                            <VolumeIndicator volume={volume} />
+                                            <PitchIndicator detectedNote={detectedNote} targetNote={currentNote} />
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ========== RENDER ==========
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
