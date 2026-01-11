@@ -358,7 +358,7 @@
 
                 // THRESHOLD NORMALIZZATO (era 0.001)
                 // Impostalo a 0.02 o 0.03 per evitare rumori di fondo
-                if (volume < 0.03) return;
+                if (volume < 0.02) return;
 
                 const inputChroma = features.chroma;
 
@@ -984,5 +984,6 @@
         root.render(<App />);
     </script>
 </body>
+
 
 </html>
